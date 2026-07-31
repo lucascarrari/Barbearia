@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -43,6 +43,8 @@ class Service(TimeStampedModel):
 
 
 class Barber(TimeStampedModel):
+    DEFAULT_WORK_DAYS = "0,1,2,3,4,5"
+
     name = models.CharField(max_length=120, unique=True)
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -52,6 +54,11 @@ class Barber(TimeStampedModel):
         related_name="barber_profile",
     )
     is_active = models.BooleanField(default=True)
+    work_days = models.CharField(max_length=20, default=DEFAULT_WORK_DAYS)
+    work_start = models.TimeField(default=time(9, 0))
+    work_end = models.TimeField(default=time(19, 0))
+    break_start = models.TimeField(null=True, blank=True)
+    break_end = models.TimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -62,6 +69,25 @@ class Barber(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def work_day_list(self):
+        return [item for item in self.work_days.split(",") if item != ""]
+
+    def works_on(self, day):
+        return str(day.weekday()) in self.work_day_list
+
+    def has_break(self):
+        return self.break_start and self.break_end and self.break_start < self.break_end
+
+    def is_inside_work_window(self, starts_at, ends_at):
+        start_time = starts_at.time()
+        end_time = ends_at.time()
+        if start_time < self.work_start or end_time > self.work_end:
+            return False
+        if self.has_break() and start_time < self.break_end and end_time > self.break_start:
+            return False
+        return True
 
 
 class AppointmentStatus(models.TextChoices):
@@ -97,6 +123,63 @@ ACTIVE_APPOINTMENT_STATUSES = [
 ]
 
 SLOT_MINUTES = 30
+
+
+class BarberTimeBlock(TimeStampedModel):
+    barber = models.ForeignKey(Barber, on_delete=models.CASCADE, related_name="time_blocks")
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    reason = models.CharField(max_length=160, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["date", "start_time"]
+        indexes = [
+            models.Index(fields=["barber", "date", "start_time"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.barber} - {self.date} {self.start_time}-{self.end_time}"
+
+    @property
+    def starts_at(self):
+        return timezone.make_aware(datetime.combine(self.date, self.start_time))
+
+    @property
+    def ends_at(self):
+        return timezone.make_aware(datetime.combine(self.date, self.end_time))
+
+    def clean(self):
+        super().clean()
+        if not self.start_time or not self.end_time:
+            return
+        if self.start_time.minute % SLOT_MINUTES != 0 or self.end_time.minute % SLOT_MINUTES != 0:
+            raise ValidationError("Use horarios de 30 em 30 minutos para bloqueios.")
+        if self.end_time <= self.start_time:
+            raise ValidationError({"end_time": "O fim do bloqueio deve ser depois do inicio."})
+        if not self.barber_id or not self.date or not self.is_active:
+            return
+        conflicting = (
+            Appointment.objects.filter(
+                barber=self.barber,
+                date=self.date,
+                is_archived=False,
+                status__in=ACTIVE_APPOINTMENT_STATUSES,
+            )
+            .exclude(status__in=[AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW])
+            .select_related("service")
+        )
+        for appointment in conflicting:
+            if self.starts_at < appointment.ends_at and self.ends_at > appointment.starts_at:
+                raise ValidationError(
+                    "Nao e possivel bloquear um horario que ja tem atendimento ativo."
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Appointment(TimeStampedModel):
@@ -180,6 +263,37 @@ class Appointment(TimeStampedModel):
 
         if self.status not in ACTIVE_APPOINTMENT_STATUSES or self.is_archived:
             return
+
+        same_slot = False
+        if self.pk:
+            same_slot = Appointment.objects.filter(
+                pk=self.pk,
+                barber=self.barber,
+                date=self.date,
+                start_time=self.start_time,
+                duration_minutes=self.duration_minutes,
+            ).exists()
+
+        if not same_slot:
+            if not self.barber.is_active:
+                raise ValidationError({"barber": "Este barbeiro esta inativo no momento."})
+
+            if not self.barber.works_on(self.date):
+                raise ValidationError({"date": "Este barbeiro nao trabalha nesta data."})
+
+            if not self.barber.is_inside_work_window(self.starts_at, self.ends_at):
+                raise ValidationError(
+                    {"start_time": "Este horario esta fora da escala ou pausa do barbeiro."}
+                )
+
+            blocked = BarberTimeBlock.objects.filter(
+                barber=self.barber,
+                date=self.date,
+                is_active=True,
+            )
+            for block in blocked:
+                if self.starts_at < block.ends_at and self.ends_at > block.starts_at:
+                    raise ValidationError({"start_time": "Este horario esta bloqueado para o barbeiro."})
 
         conflicting = (
             Appointment.objects.filter(

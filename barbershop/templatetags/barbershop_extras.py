@@ -21,6 +21,13 @@ def chart_height(value):
 
 
 @register.filter
+def get_item(mapping, key):
+    if not mapping:
+        return None
+    return mapping.get(key)
+
+
+@register.filter
 def whatsapp_phone(value):
     digits = "".join(char for char in str(value or "") if char.isdigit())
     if len(digits) in {10, 11}:

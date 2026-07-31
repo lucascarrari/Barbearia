@@ -20,6 +20,9 @@ urlpatterns = [
     path("admin/servicos/<int:pk>/editar/", views.service_edit, name="service-edit"),
     path("admin/equipe/novo/", views.barber_create, name="barber-create"),
     path("admin/equipe/<int:pk>/alternar-status/", views.barber_toggle_active, name="barber-toggle-active"),
+    path("admin/equipe/<int:pk>/escala/", views.barber_schedule_update, name="barber-schedule-update"),
+    path("admin/equipe/<int:pk>/bloqueios/novo/", views.barber_block_create, name="barber-block-create"),
+    path("admin/equipe/bloqueios/<int:pk>/remover/", views.barber_block_delete, name="barber-block-delete"),
     path("admin/equipe/<int:pk>/excluir/", views.barber_delete, name="barber-delete"),
     path("admin/financeiro/exportar.csv", views.finance_export_csv, name="finance-export-csv"),
 ]

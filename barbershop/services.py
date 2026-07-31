@@ -9,6 +9,7 @@ from .models import (
     Appointment,
     AppointmentStatus,
     AuditLog,
+    BarberTimeBlock,
     Payment,
     PaymentStatus,
 )
@@ -56,15 +57,18 @@ def appointment_to_dict(appointment):
     }
 
 
-def iter_slots(day, duration_minutes):
-    cursor = datetime.combine(day, OPENING_HOUR)
-    closing = datetime.combine(day, CLOSING_HOUR)
+def iter_slots(day, duration_minutes, start_time=None, end_time=None):
+    cursor = datetime.combine(day, start_time or OPENING_HOUR)
+    closing = datetime.combine(day, end_time or CLOSING_HOUR)
     while cursor + timedelta(minutes=duration_minutes) <= closing:
         yield cursor.time().strftime("%H:%M")
         cursor += timedelta(minutes=SLOT_MINUTES)
 
 
 def available_slots(day, barber, service, appointment_id=None):
+    if not barber.is_active or not barber.works_on(day):
+        return []
+
     slots = []
     qs = Appointment.objects.filter(
         barber=barber,
@@ -75,11 +79,22 @@ def available_slots(day, barber, service, appointment_id=None):
     if appointment_id:
         qs = qs.exclude(pk=appointment_id)
     existing = list(qs)
+    blocks = list(
+        BarberTimeBlock.objects.filter(
+            barber=barber,
+            date=day,
+            is_active=True,
+        )
+    )
 
-    for slot in iter_slots(day, service.duration_minutes):
+    for slot in iter_slots(day, service.duration_minutes, barber.work_start, barber.work_end):
         starts = timezone.make_aware(datetime.combine(day, datetime.strptime(slot, "%H:%M").time()))
         ends = starts + timedelta(minutes=service.duration_minutes)
-        conflict = any(starts < item.ends_at and ends > item.starts_at for item in existing)
+        conflict = (
+            not barber.is_inside_work_window(starts, ends)
+            or any(starts < item.ends_at and ends > item.starts_at for item in existing)
+            or any(starts < block.ends_at and ends > block.starts_at for block in blocks)
+        )
         slots.append({"time": slot, "available": not conflict})
     return slots
 

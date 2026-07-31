@@ -13,6 +13,7 @@ from .models import (
     Appointment,
     AppointmentStatus,
     Barber,
+    BarberTimeBlock,
     Payment,
     PaymentMethod,
     PaymentStatus,
@@ -97,6 +98,59 @@ class AppointmentRulesTests(BaseDataMixin, TestCase):
             [slot["time"] for slot in after_cancel if slot["available"]],
         )
 
+    def test_day_off_hides_slots_and_rejects_appointment(self):
+        self.barber.work_days = "0,1,2,3,4"
+        self.barber.save()
+
+        slots = available_slots(date(2026, 8, 1), self.barber, self.short_service)
+        self.assertEqual(slots, [])
+        with self.assertRaises(ValidationError):
+            self.make_appointment(start=time(10, 0), service=self.short_service)
+
+    def test_break_time_hides_overlapping_slots(self):
+        self.barber.break_start = time(12, 0)
+        self.barber.break_end = time(13, 0)
+        self.barber.save()
+
+        slots = available_slots(date(2026, 8, 1), self.barber, self.short_service)
+        available = [slot["time"] for slot in slots if slot["available"]]
+        self.assertNotIn("12:00", available)
+        self.assertNotIn("12:30", available)
+        self.assertIn("13:00", available)
+
+    def test_manual_block_hides_slot_and_release_when_removed(self):
+        block = BarberTimeBlock.objects.create(
+            barber=self.barber,
+            date=date(2026, 8, 1),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            reason="Folga rapida",
+        )
+        blocked_slots = available_slots(date(2026, 8, 1), self.barber, self.short_service)
+        self.assertNotIn(
+            "10:00",
+            [slot["time"] for slot in blocked_slots if slot["available"]],
+        )
+
+        block.is_active = False
+        block.save()
+        released_slots = available_slots(date(2026, 8, 1), self.barber, self.short_service)
+        self.assertIn(
+            "10:00",
+            [slot["time"] for slot in released_slots if slot["available"]],
+        )
+
+    def test_manual_block_cannot_overlap_active_appointment(self):
+        self.make_appointment(start=time(10, 0), service=self.short_service)
+        with self.assertRaises(ValidationError):
+            BarberTimeBlock.objects.create(
+                barber=self.barber,
+                date=date(2026, 8, 1),
+                start_time=time(10, 0),
+                end_time=time(11, 0),
+                reason="Folga",
+            )
+
     def test_whatsapp_message_url_has_client_phone_and_appointment_details(self):
         appointment = self.make_appointment(
             start=time(14, 30),
@@ -175,6 +229,9 @@ class PermissionTests(BaseDataMixin, TestCase):
                 "username": "beto",
                 "password": "senha-forte-123",
                 "is_active": "on",
+                "work_days": "5",
+                "work_start": "09:00",
+                "work_end": "19:00",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -196,6 +253,9 @@ class PermissionTests(BaseDataMixin, TestCase):
                 "username": "beto",
                 "password": "senha-forte-123",
                 "is_active": "on",
+                "work_days": "5",
+                "work_start": "09:00",
+                "work_end": "19:00",
             },
         )
         self.client.logout()
@@ -232,6 +292,54 @@ class PermissionTests(BaseDataMixin, TestCase):
         self.assertEqual(response.status_code, 302)
         self.barber.refresh_from_db()
         self.assertTrue(self.barber.is_active)
+
+    def test_manager_can_update_barber_schedule(self):
+        user_model = get_user_model()
+        group = Group.objects.create(name=Role.MANAGER)
+        user = user_model.objects.create_user("gerente", password="senha-forte-123")
+        user.groups.add(group)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("barber-schedule-update", args=[self.barber.pk]),
+            {
+                f"schedule-{self.barber.pk}-work_days": "4",
+                f"schedule-{self.barber.pk}-work_start": "10:00",
+                f"schedule-{self.barber.pk}-work_end": "18:00",
+                f"schedule-{self.barber.pk}-break_start": "13:00",
+                f"schedule-{self.barber.pk}-break_end": "14:00",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.barber.refresh_from_db()
+        self.assertEqual(self.barber.work_days, "4")
+        self.assertEqual(self.barber.work_start, time(10, 0))
+        self.assertEqual(self.barber.work_end, time(18, 0))
+
+    def test_manager_can_create_and_remove_barber_block(self):
+        user_model = get_user_model()
+        group = Group.objects.create(name=Role.MANAGER)
+        user = user_model.objects.create_user("gerente", password="senha-forte-123")
+        user.groups.add(group)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("barber-block-create", args=[self.barber.pk]),
+            {
+                f"block-{self.barber.pk}-date": "2026-08-01",
+                f"block-{self.barber.pk}-start_time": "15:00",
+                f"block-{self.barber.pk}-end_time": "16:00",
+                f"block-{self.barber.pk}-reason": "Folga",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        block = BarberTimeBlock.objects.get(barber=self.barber, date=date(2026, 8, 1))
+        self.assertTrue(block.is_active)
+
+        response = self.client.post(reverse("barber-block-delete", args=[block.pk]))
+        self.assertEqual(response.status_code, 302)
+        block.refresh_from_db()
+        self.assertFalse(block.is_active)
 
     def test_barber_user_is_redirected_from_admin_to_own_dashboard(self):
         user_model = get_user_model()

@@ -227,39 +227,99 @@
           <label>Nome do barbeiro {{ barber_form.name }}</label>
           <label>Usuario de acesso {{ barber_form.username }}</label>
           <label>Senha inicial {{ barber_form.password }}</label>
+          <label>Dias {{ barber_form.work_days }}</label>
+          <label>Entrada {{ barber_form.work_start }}</label>
+          <label>Saida {{ barber_form.work_end }}</label>
+          <label>Pausa inicio {{ barber_form.break_start }}</label>
+          <label>Pausa fim {{ barber_form.break_end }}</label>
           <label class="check-row">{{ barber_form.is_active }} Ativo</label>
           <button class="button compact" type="submit">Adicionar barbeiro</button>
         </form>
 
         <div class="team-grid">
           {% for barber in team_barbers %}
+            {% with schedule_form=schedule_forms|get_item:barber.pk block_form=block_forms|get_item:barber.pk blocks=active_blocks|get_item:barber.pk %}
             <article class="{% if not barber.is_active %}inactive{% endif %}">
-              <div>
-                <strong>{{ barber.name }}</strong>
-                <span>{% if barber.user %}Usuario: {{ barber.user.username }}{% else %}Sem usuario vinculado{% endif %}</span>
-                <small>{% if barber.is_active %}Ativo{% else %}Inativo{% endif %}</small>
+              <div class="team-card-head">
+                <div>
+                  <strong>{{ barber.name }}</strong>
+                  <span>{% if barber.user %}Usuario: {{ barber.user.username }}{% else %}Sem usuario vinculado{% endif %}</span>
+                  <small>{% if barber.is_active %}Ativo{% else %}Inativo{% endif %}</small>
+                </div>
+                <div class="team-actions">
+                  <form method="post" action="{% url 'barber-toggle-active' barber.pk %}">
+                    {% csrf_token %}
+                    <button class="{% if barber.is_active %}team-toggle active{% else %}team-toggle inactive{% endif %}" type="submit">
+                      {% if barber.is_active %}Desativar{% else %}Ativar{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="{% url 'barber-delete' barber.pk %}" data-confirm-submit="Tem certeza que deseja excluir este barbeiro?">
+                    {% csrf_token %}
+                    <button class="icon-action action-delete" type="submit" aria-label="Excluir barbeiro" title="Excluir barbeiro">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7h16"/>
+                        <path d="M9 7V5h6v2"/>
+                        <path d="M6 7l1 13h10l1-13"/>
+                        <path d="M10 11v5"/>
+                        <path d="M14 11v5"/>
+                      </svg>
+                    </button>
+                  </form>
+                </div>
               </div>
-              <div class="team-actions">
-                <form method="post" action="{% url 'barber-toggle-active' barber.pk %}">
-                  {% csrf_token %}
-                  <button class="{% if barber.is_active %}team-toggle active{% else %}team-toggle inactive{% endif %}" type="submit">
-                    {% if barber.is_active %}Desativar{% else %}Ativar{% endif %}
-                  </button>
-                </form>
-                <form method="post" action="{% url 'barber-delete' barber.pk %}" data-confirm-submit="Tem certeza que deseja excluir este barbeiro?">
-                  {% csrf_token %}
-                  <button class="icon-action action-delete" type="submit" aria-label="Excluir barbeiro" title="Excluir barbeiro">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 7h16"/>
-                      <path d="M9 7V5h6v2"/>
-                      <path d="M6 7l1 13h10l1-13"/>
-                      <path d="M10 11v5"/>
-                      <path d="M14 11v5"/>
-                    </svg>
-                  </button>
-                </form>
+
+              <form class="schedule-form" method="post" action="{% url 'barber-schedule-update' barber.pk %}">
+                {% csrf_token %}
+                <label>Dias {{ schedule_form.work_days }}</label>
+                <div class="grid two">
+                  <label>Entrada {{ schedule_form.work_start }}</label>
+                  <label>Saida {{ schedule_form.work_end }}</label>
+                </div>
+                <div class="grid two">
+                  <label>Pausa inicio {{ schedule_form.break_start }}</label>
+                  <label>Pausa fim {{ schedule_form.break_end }}</label>
+                </div>
+                <button class="button compact" type="submit">Salvar escala</button>
+              </form>
+
+              <form class="block-form" method="post" action="{% url 'barber-block-create' barber.pk %}">
+                {% csrf_token %}
+                <strong>Bloquear horario</strong>
+                <div class="grid two">
+                  <label>Data {{ block_form.date }}</label>
+                  <label>Motivo {{ block_form.reason }}</label>
+                </div>
+                <div class="grid two">
+                  <label>Inicio {{ block_form.start_time }}</label>
+                  <label>Fim {{ block_form.end_time }}</label>
+                </div>
+                <button class="button ghost compact" type="submit">Adicionar bloqueio</button>
+              </form>
+
+              <div class="block-list">
+                <strong>Bloqueios ativos</strong>
+                {% for block in blocks %}
+                  <div>
+                    <span>{{ block.date|date:"d/m/Y" }} {{ block.start_time|time:"H:i" }}-{{ block.end_time|time:"H:i" }}</span>
+                    <form method="post" action="{% url 'barber-block-delete' block.pk %}" data-confirm-submit="Remover este bloqueio?">
+                      {% csrf_token %}
+                      <button class="icon-action action-delete" type="submit" aria-label="Remover bloqueio" title="Remover bloqueio">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 7h16"/>
+                          <path d="M9 7V5h6v2"/>
+                          <path d="M6 7l1 13h10l1-13"/>
+                          <path d="M10 11v5"/>
+                          <path d="M14 11v5"/>
+                        </svg>
+                      </button>
+                    </form>
+                  </div>
+                {% empty %}
+                  <small>Nenhum bloqueio futuro.</small>
+                {% endfor %}
               </div>
             </article>
+            {% endwith %}
           {% empty %}
             <p class="empty">Nenhum barbeiro cadastrado.</p>
           {% endfor %}

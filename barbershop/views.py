@@ -24,6 +24,8 @@ from .forms import (
     AppointmentAdminForm,
     AppointmentFilterForm,
     BarberForm,
+    BarberScheduleForm,
+    BarberTimeBlockForm,
     PaymentForm,
     PublicAppointmentForm,
     ServiceForm,
@@ -33,6 +35,7 @@ from .models import (
     Appointment,
     AppointmentStatus,
     Barber,
+    BarberTimeBlock,
     Payment,
     PaymentMethod,
     PaymentStatus,
@@ -298,6 +301,23 @@ def admin_dashboard(request):
             "total_brl"
         ]
 
+    team_barbers = Barber.objects.select_related("user").prefetch_related("time_blocks").all()
+    schedule_forms = {
+        barber.pk: BarberScheduleForm(instance=barber, prefix=f"schedule-{barber.pk}")
+        for barber in team_barbers
+    }
+    block_forms = {
+        barber.pk: BarberTimeBlockForm(prefix=f"block-{barber.pk}") for barber in team_barbers
+    }
+    active_blocks = {
+        barber.pk: [
+            block
+            for block in barber.time_blocks.all()
+            if block.is_active and block.date >= today
+        ][:6]
+        for barber in team_barbers
+    }
+
     context = {
         "active_section": active_section,
         "dashboard": dashboard,
@@ -306,7 +326,10 @@ def admin_dashboard(request):
         "appointments": page_obj.object_list,
         "services": Service.objects.all(),
         "barbers": Barber.objects.filter(is_active=True),
-        "team_barbers": Barber.objects.select_related("user").all(),
+        "team_barbers": team_barbers,
+        "schedule_forms": schedule_forms,
+        "block_forms": block_forms,
+        "active_blocks": active_blocks,
         "payment_methods": PaymentMethod.choices,
         "appointment_statuses": AppointmentStatus.choices,
         "payment_statuses": PaymentStatus.choices,
@@ -537,6 +560,90 @@ def barber_toggle_active(request, pk):
         request,
         f"{barber.name} foi {'ativado' if barber.is_active else 'desativado'}.",
     )
+    return redirect(f"{reverse('admin-dashboard')}?section=equipe")
+
+
+@require_POST
+@role_required(Role.ADMIN, Role.MANAGER)
+def barber_schedule_update(request, pk):
+    barber = get_object_or_404(Barber, pk=pk)
+    old_values = {
+        "work_days": barber.work_days,
+        "work_start": barber.work_start.strftime("%H:%M"),
+        "work_end": barber.work_end.strftime("%H:%M"),
+        "break_start": barber.break_start.strftime("%H:%M") if barber.break_start else "",
+        "break_end": barber.break_end.strftime("%H:%M") if barber.break_end else "",
+    }
+    form = BarberScheduleForm(request.POST, instance=barber, prefix=f"schedule-{barber.pk}")
+    if form.is_valid():
+        updated = form.save()
+        audit(
+            request,
+            "barber_schedule_updated",
+            updated,
+            old_values,
+            {
+                "work_days": updated.work_days,
+                "work_start": updated.work_start.strftime("%H:%M"),
+                "work_end": updated.work_end.strftime("%H:%M"),
+                "break_start": updated.break_start.strftime("%H:%M") if updated.break_start else "",
+                "break_end": updated.break_end.strftime("%H:%M") if updated.break_end else "",
+            },
+        )
+        messages.success(request, f"Escala de {barber.name} atualizada.")
+    else:
+        first_error = next(iter(form.errors.values()))[0]
+        messages.error(request, f"Revise a escala: {first_error}")
+    return redirect(f"{reverse('admin-dashboard')}?section=equipe")
+
+
+@require_POST
+@role_required(Role.ADMIN, Role.MANAGER)
+def barber_block_create(request, pk):
+    barber = get_object_or_404(Barber, pk=pk)
+    form = BarberTimeBlockForm(request.POST, prefix=f"block-{barber.pk}")
+    if form.is_valid():
+        block = form.save(commit=False)
+        block.barber = barber
+        try:
+            block.save()
+        except ValidationError as exc:
+            message = "; ".join(exc.messages)
+            messages.error(request, f"Nao foi possivel criar o bloqueio: {message}")
+        else:
+            audit(
+                request,
+                "barber_time_block_created",
+                block,
+                new_values={
+                    "barber": barber.name,
+                    "date": block.date.isoformat(),
+                    "start_time": block.start_time.strftime("%H:%M"),
+                    "end_time": block.end_time.strftime("%H:%M"),
+                },
+            )
+            messages.success(request, f"Horario bloqueado para {barber.name}.")
+    else:
+        first_error = next(iter(form.errors.values()))[0]
+        messages.error(request, f"Revise o bloqueio: {first_error}")
+    return redirect(f"{reverse('admin-dashboard')}?section=equipe")
+
+
+@require_POST
+@role_required(Role.ADMIN, Role.MANAGER)
+def barber_block_delete(request, pk):
+    block = get_object_or_404(BarberTimeBlock, pk=pk)
+    barber_name = block.barber.name
+    old_values = {
+        "barber": barber_name,
+        "date": block.date.isoformat(),
+        "start_time": block.start_time.strftime("%H:%M"),
+        "end_time": block.end_time.strftime("%H:%M"),
+    }
+    block.is_active = False
+    block.save()
+    audit(request, "barber_time_block_removed", block, old_values, {"is_active": False})
+    messages.success(request, f"Bloqueio removido para {barber_name}.")
     return redirect(f"{reverse('admin-dashboard')}?section=equipe")
 
 

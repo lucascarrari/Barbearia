@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Appointment, AuditLog, Barber, Payment, Service, ServicePriceHistory
+from .models import Appointment, AuditLog, Barber, BarberTimeBlock, Payment, Service, ServicePriceHistory
 
 
 @admin.register(Service)
@@ -25,9 +25,16 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(Barber)
 class BarberAdmin(admin.ModelAdmin):
-    list_display = ("name", "user", "is_active", "updated_at")
+    list_display = ("name", "user", "is_active", "work_start", "work_end", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("name", "user__username")
+
+
+@admin.register(BarberTimeBlock)
+class BarberTimeBlockAdmin(admin.ModelAdmin):
+    list_display = ("barber", "date", "start_time", "end_time", "reason", "is_active")
+    list_filter = ("is_active", "date", "barber")
+    search_fields = ("barber__name", "reason")
 
 
 @admin.register(Appointment)
