@@ -1,0 +1,352 @@
+{% extends "barbershop/base.html" %}
+{% load barbershop_extras %}
+{% block title %}Tio Bigode | Admin{% endblock %}
+{% block body %}
+<main class="admin-layout">
+  <aside class="sidebar">
+    <a class="brand text-only" href="{% url 'admin-dashboard' %}">Tio Bigode</a>
+    <nav>
+      <a class="{% if active_section == 'dashboard' %}active{% endif %}" href="{% url 'admin-dashboard' %}?section=dashboard">Dashboard</a>
+      <a class="{% if active_section == 'agenda' %}active{% endif %}" href="{% url 'admin-dashboard' %}?section=agenda">Agenda</a>
+      {% if can_manage_services %}
+        <a class="{% if active_section == 'servicos' %}active{% endif %}" href="{% url 'admin-dashboard' %}?section=servicos">Servicos</a>
+      {% endif %}
+      {% if can_manage_team %}
+        <a class="{% if active_section == 'equipe' %}active{% endif %}" href="{% url 'admin-dashboard' %}?section=equipe">Equipe</a>
+      {% endif %}
+      {% if can_view_finance %}
+        <a class="{% if active_section == 'financeiro' %}active{% endif %}" href="{% url 'admin-dashboard' %}?section=financeiro">Financeiro</a>
+      {% endif %}
+    </nav>
+    <form method="post" action="{% url 'admin-logout' %}">
+      {% csrf_token %}
+      <button class="button ghost" type="submit">Sair</button>
+    </form>
+  </aside>
+
+  <section class="admin-content">
+    <header class="admin-top">
+      <div>
+        <span class="kicker">Painel administrativo</span>
+        <h1>
+          {% if active_section == 'agenda' %}Agenda
+          {% elif active_section == 'servicos' %}Servicos
+          {% elif active_section == 'equipe' %}Equipe
+          {% elif active_section == 'financeiro' %}Financeiro
+          {% else %}Dashboard{% endif %}
+        </h1>
+      </div>
+      <a class="button ghost" href="{% url 'home' %}">Site publico</a>
+    </header>
+
+    {% if active_section == 'dashboard' %}
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Resumo do dia</span>
+            <h2>Receitas e atendimentos</h2>
+          </div>
+        </div>
+        <div class="metric-grid dashboard-metrics">
+          {% if can_view_finance %}
+            <article><span>Receita hoje</span><strong>{{ dashboard.today_revenue }}</strong></article>
+            <article><span>Receita no mes</span><strong>{{ dashboard.month_revenue }}</strong></article>
+          {% endif %}
+          <article><span>Atendimentos hoje</span><strong>{{ dashboard.today_count }}</strong></article>
+          <article><span>Atendimentos no mes</span><strong>{{ dashboard.month_count }}</strong></article>
+          <article><span>Concluidos</span><strong>{{ dashboard.completed_count }}</strong></article>
+          <article><span>Pendentes</span><strong>{{ dashboard.pending_count }}</strong></article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Proximos horarios</span>
+            <h2>Fila de atendimento</h2>
+          </div>
+          <a class="button compact" href="{% url 'admin-dashboard' %}?section=agenda">Abrir agenda</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Data</th><th>Cliente</th><th>Servico</th><th>Barbeiro</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {% for appointment in dashboard.next_appointments %}
+                <tr>
+                  <td>{{ appointment.date|date:"d/m/Y" }} {{ appointment.start_time|time:"H:i" }}</td>
+                  <td><strong>{{ appointment.client_name }}</strong><br><span>{{ appointment.phone }}</span></td>
+                  <td>{{ appointment.service_name_snapshot }}</td>
+                  <td>{{ appointment.barber.name }}</td>
+                  <td><span class="status {{ appointment.status }}">{{ appointment.get_status_display }}</span></td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5" class="empty">Nenhum atendimento futuro na fila.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if active_section == 'agenda' %}
+      <section class="panel" id="agenda">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Agendamentos</span>
+            <h2>Lista, calendario e filtros</h2>
+          </div>
+        </div>
+        <form class="filter-bar" method="get">
+          <input type="hidden" name="section" value="agenda">
+          {{ filters.q }}
+          {{ filters.date }}
+          {{ filters.start }}
+          {{ filters.end }}
+          {{ filters.barber }}
+          {{ filters.service }}
+          {{ filters.status }}
+          {{ filters.payment_status }}
+          {{ filters.view }}
+          <button class="button compact" type="submit">Filtrar</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Servico</th>
+                <th>Barbeiro</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Pagamento</th>
+                <th>Acoes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for appointment in appointments %}
+                <tr>
+                  <td>{{ appointment.date|date:"d/m/Y" }} {{ appointment.start_time|time:"H:i" }}</td>
+                  <td><strong>{{ appointment.client_name }}</strong><br><span>{{ appointment.phone }}</span></td>
+                  <td>{{ appointment.service_name_snapshot }}</td>
+                  <td>{{ appointment.barber.name }}</td>
+                  <td>{{ appointment.service_price|brl }}</td>
+                  <td><span class="status {{ appointment.status }}">{{ appointment.get_status_display }}</span></td>
+                  <td>{{ appointment.get_payment_status_display }}</td>
+                  <td class="actions">
+                    {% appointment_whatsapp_url appointment as whatsapp_url %}
+                    {% if whatsapp_url %}
+                      <a class="icon-link icon-action whatsapp-action" href="{{ whatsapp_url }}" target="_blank" rel="noreferrer" aria-label="Enviar reforco pelo WhatsApp" title="Enviar reforco pelo WhatsApp">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20.5 11.8a8.4 8.4 0 0 1-12.4 7.4L4 20.3l1.1-4A8.4 8.4 0 1 1 20.5 11.8Z"/>
+                          <path d="M8.7 7.6c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.8 1.9c.1.2.1.4 0 .6l-.5.6c-.1.1-.2.3-.1.5.4.8 1 1.5 1.7 2 .8.6 1.4.8 1.6.9.2.1.4 0 .5-.1l.8-1c.2-.2.4-.2.6-.1l1.8.9c.2.1.4.3.4.5 0 .4-.3 1.3-.8 1.8-.5.5-1.3.7-2.1.5-1.8-.4-3.4-1.3-4.8-2.6-1.3-1.2-2.3-2.7-2.9-4.4-.3-.8-.1-1.5.3-2Z"/>
+                        </svg>
+                      </a>
+                    {% endif %}
+                    <a class="icon-link action-open" href="{% url 'appointment-detail' appointment.pk %}">Abrir</a>
+                    <a class="icon-link icon-action action-edit" href="{% url 'appointment-edit' appointment.pk %}" aria-label="Editar agendamento" title="Editar agendamento">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 20h4.2L18.7 9.5a2 2 0 0 0 0-2.8l-1.4-1.4a2 2 0 0 0-2.8 0L4 15.8V20Z"/>
+                        <path d="m13.5 6.3 4.2 4.2"/>
+                      </svg>
+                    </a>
+                    {% if can_delete_appointments %}
+                      <form data-ajax-action data-confirm="Tem certeza que deseja excluir este agendamento?" method="post" action="{% url 'appointment-action' appointment.pk 'delete' %}">
+                        {% csrf_token %}
+                        <button class="icon-action action-delete" type="submit" aria-label="Excluir agendamento" title="Excluir agendamento">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 7h16"/>
+                            <path d="M9 7V5h6v2"/>
+                            <path d="M6 7l1 13h10l1-13"/>
+                            <path d="M10 11v5"/>
+                            <path d="M14 11v5"/>
+                          </svg>
+                        </button>
+                      </form>
+                    {% endif %}
+                    <form data-ajax-action method="post" action="{% url 'appointment-action' appointment.pk 'confirm' %}">{% csrf_token %}<button class="action-confirm" type="submit">Confirmar</button></form>
+                    <form data-ajax-action method="post" action="{% url 'appointment-action' appointment.pk 'complete' %}">{% csrf_token %}<input type="hidden" name="payment_method" value="{{ appointment.payment_method }}"><button class="action-complete" type="submit">Concluir</button></form>
+                    <form data-ajax-action data-confirm="Cancelar este agendamento?" method="post" action="{% url 'appointment-action' appointment.pk 'cancel' %}">{% csrf_token %}<button class="action-cancel" type="submit">Cancelar</button></form>
+                    <form data-ajax-action data-confirm="Registrar ausencia do cliente?" method="post" action="{% url 'appointment-action' appointment.pk 'no_show' %}">{% csrf_token %}<button class="action-no-show" type="submit">Ausencia</button></form>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="8" class="empty">Nenhum agendamento encontrado.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page_obj.has_other_pages %}
+          <div class="pagination">
+            {% if page_obj.has_previous %}<a href="?section=agenda&page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+            <span>Pagina {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}<a href="?section=agenda&page={{ page_obj.next_page_number }}">Proxima</a>{% endif %}
+          </div>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if active_section == 'servicos' and can_manage_services %}
+      <section class="panel" id="servicos-admin">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Catalogo</span>
+            <h2>Servicos</h2>
+          </div>
+          <a class="button compact" href="{% url 'service-create' %}">Novo servico</a>
+        </div>
+        <div class="service-admin-grid">
+          {% for service in services %}
+            <article>
+              <strong>{{ service.name }}</strong>
+              <span>{{ service.price|brl }} | {{ service.duration_minutes }} min</span>
+              <small>{% if service.is_active %}Ativo{% else %}Inativo{% endif %}</small>
+              <a href="{% url 'service-edit' service.pk %}">Editar</a>
+            </article>
+          {% empty %}
+            <p class="empty">Nenhum servico cadastrado.</p>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if active_section == 'equipe' and can_manage_team %}
+      <section class="panel" id="equipe-admin">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Equipe</span>
+            <h2>Barbeiros</h2>
+          </div>
+        </div>
+
+        <form class="team-create-form" method="post" action="{% url 'barber-create' %}">
+          {% csrf_token %}
+          <label>Nome do barbeiro {{ barber_form.name }}</label>
+          <label>Usuario de acesso {{ barber_form.username }}</label>
+          <label>Senha inicial {{ barber_form.password }}</label>
+          <label class="check-row">{{ barber_form.is_active }} Ativo</label>
+          <button class="button compact" type="submit">Adicionar barbeiro</button>
+        </form>
+
+        <div class="team-grid">
+          {% for barber in team_barbers %}
+            <article class="{% if not barber.is_active %}inactive{% endif %}">
+              <div>
+                <strong>{{ barber.name }}</strong>
+                <span>{% if barber.user %}Usuario: {{ barber.user.username }}{% else %}Sem usuario vinculado{% endif %}</span>
+                <small>{% if barber.is_active %}Ativo{% else %}Inativo{% endif %}</small>
+              </div>
+              <div class="team-actions">
+                <form method="post" action="{% url 'barber-toggle-active' barber.pk %}">
+                  {% csrf_token %}
+                  <button class="{% if barber.is_active %}team-toggle active{% else %}team-toggle inactive{% endif %}" type="submit">
+                    {% if barber.is_active %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+                <form method="post" action="{% url 'barber-delete' barber.pk %}" data-confirm-submit="Tem certeza que deseja excluir este barbeiro?">
+                  {% csrf_token %}
+                  <button class="icon-action action-delete" type="submit" aria-label="Excluir barbeiro" title="Excluir barbeiro">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16"/>
+                      <path d="M9 7V5h6v2"/>
+                      <path d="M6 7l1 13h10l1-13"/>
+                      <path d="M10 11v5"/>
+                      <path d="M14 11v5"/>
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            </article>
+          {% empty %}
+            <p class="empty">Nenhum barbeiro cadastrado.</p>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if active_section == 'financeiro' and can_view_finance %}
+      <section class="panel" id="financeiro">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Financeiro</span>
+            <h2>Receitas confirmadas</h2>
+          </div>
+          <a class="button compact" href="{% url 'finance-export-csv' %}?{{ request.GET.urlencode }}">Exportar CSV</a>
+        </div>
+        <form class="filter-bar" method="get">
+          <input type="hidden" name="section" value="financeiro">
+          <select name="finance_period">
+            <option value="day">Dia</option>
+            <option value="week">Semana</option>
+            <option value="month" selected>Mes</option>
+            <option value="year">Ano</option>
+          </select>
+          <input type="date" name="finance_start">
+          <input type="date" name="finance_end">
+          <select name="finance_barber"><option value="">Barbeiro</option>{% for barber in barbers %}<option value="{{ barber.pk }}">{{ barber.name }}</option>{% endfor %}</select>
+          <select name="finance_service"><option value="">Servico</option>{% for service in services %}<option value="{{ service.pk }}">{{ service.name }}</option>{% endfor %}</select>
+          <select name="finance_method"><option value="">Pagamento</option>{% for value,label in payment_methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+          <button class="button compact" type="submit">Atualizar</button>
+        </form>
+        <div class="metric-grid">
+          <article><span>Recebido</span><strong>{{ finance.total_brl }}</strong></article>
+          <article><span>Atendimentos</span><strong>{{ finance.completed }}</strong></article>
+          <article><span>Ticket medio</span><strong>{{ finance.average_brl }}</strong></article>
+          <article><span>Pendente</span><strong>{{ finance.pending_brl }}</strong></article>
+          <article><span>Cancelado/estornado</span><strong>{{ finance.canceled_brl }}</strong></article>
+        </div>
+        <div class="chart-grid">
+          <div class="chart">
+            <h3>Faturamento por periodo</h3>
+            {% for row in finance.by_day %}
+              <div class="bar"><span style="height: {{ row.total|chart_height }}px"></span><small>{{ row.paid_at__date|date:"d/m" }}</small></div>
+            {% empty %}<p class="empty">Sem pagamentos no periodo.</p>{% endfor %}
+          </div>
+          <div class="chart">
+            <h3>Servicos mais realizados</h3>
+            {% for row in finance.by_service %}
+              <p>{{ row.appointment__service_name_snapshot }} <strong>{{ row.total|brl }}</strong></p>
+            {% empty %}<p class="empty">Sem dados.</p>{% endfor %}
+          </div>
+          <div class="chart">
+            <h3>Faturamento por barbeiro</h3>
+            {% for row in finance.by_barber %}
+              <p>{{ row.appointment__barber__name }} <strong>{{ row.total|brl }}</strong></p>
+            {% empty %}<p class="empty">Sem dados.</p>{% endfor %}
+          </div>
+          <div class="chart">
+            <h3>Forma de pagamento</h3>
+            {% for row in finance.by_method %}
+              <p>{{ row.method }} <strong>{{ row.total|brl }}</strong></p>
+            {% empty %}<p class="empty">Sem dados.</p>{% endfor %}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Cliente</th><th>Servico</th><th>Barbeiro</th><th>Valor</th><th>Forma</th><th>Status</th><th>Agendamento</th></tr></thead>
+            <tbody>
+              {% for payment in finance.payments %}
+                <tr>
+                  <td>{{ payment.paid_at|date:"d/m/Y H:i" }}</td>
+                  <td>{{ payment.appointment.client_name }}</td>
+                  <td>{{ payment.appointment.service_name_snapshot }}</td>
+                  <td>{{ payment.appointment.barber.name }}</td>
+                  <td>{{ payment.amount|brl }}</td>
+                  <td>{{ payment.get_method_display }}</td>
+                  <td>{{ payment.get_status_display }}</td>
+                  <td><a href="{% url 'appointment-detail' payment.appointment.pk %}">#{{ payment.appointment.pk }}</a></td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="8" class="empty">Nenhuma movimentacao financeira.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

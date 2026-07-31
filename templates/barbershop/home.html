@@ -1,0 +1,92 @@
+{% extends "barbershop/base.html" %}
+{% load static barbershop_extras %}
+{% block title %}Tio Bigode | Agendamento{% endblock %}
+{% block body %}
+<main class="public-shell">
+  <header class="site-header">
+    <a class="brand" href="/">
+      <img src="{% static 'barbershop/logo-tio-bigode.png' %}" alt="Tio Bigode">
+      <span>Tio Bigode</span>
+    </a>
+    <nav>
+      <a href="#servicos">Servicos</a>
+      <a href="#agendar">Agendar</a>
+      <a href="{% url 'admin-dashboard' %}">Admin</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="kicker">Barbearia com horario marcado</span>
+      <h1>Tio Bigode</h1>
+      <p>Corte, barba e bigode com agenda organizada, profissionais disponiveis e confirmacao registrada no sistema.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="#agendar">Reservar horario</a>
+        <a class="button ghost" href="#servicos">Ver servicos</a>
+      </div>
+    </div>
+    <div class="hero-logo">
+      <img src="{% static 'barbershop/logo-tio-bigode.png' %}" alt="">
+      <strong>Agenda integrada</strong>
+      <span>Dados salvos no banco com validacao de conflito.</span>
+    </div>
+  </section>
+
+  <section class="section" id="servicos">
+    <div class="section-heading">
+      <span class="kicker">Servicos</span>
+      <h2>Escolha o atendimento antes de reservar.</h2>
+    </div>
+    <div class="service-grid">
+      {% for service in services %}
+        <article class="service-card">
+          <h3>{{ service.name }}</h3>
+          <p>{{ service.description }}</p>
+          <div>
+            <strong>{{ service.price|brl }}</strong>
+            <span>{{ service.duration_minutes }} min</span>
+          </div>
+        </article>
+      {% empty %}
+        <p class="empty">Nenhum servico ativo no momento.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="booking-section" id="agendar">
+    <div class="section-heading">
+      <span class="kicker">Agendamento online</span>
+      <h2>Reserve seu horario.</h2>
+    </div>
+    <form class="booking-form" method="post" action="{% url 'appointment-create' %}" data-availability-form>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="form-error">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="grid two">
+        <label>Cliente {{ form.client_name }}</label>
+        <label>WhatsApp {{ form.phone }}</label>
+      </div>
+      <div class="grid two">
+        <label>Email {{ form.email }}</label>
+        <label>Forma de pagamento {{ form.payment_method }}</label>
+      </div>
+      <div class="grid two">
+        <label>Servico {{ form.service }}</label>
+        <label>Barbeiro {{ form.barber }}</label>
+      </div>
+      <div class="grid two">
+        <label>Data {{ form.date }}</label>
+        <label>Horario
+          <select name="start_time" id="id_start_time" required data-time-select>
+            <option value="">Consulte os horarios disponiveis</option>
+          </select>
+        </label>
+      </div>
+      <label>Observacoes {{ form.notes }}</label>
+      <div class="availability-box" data-availability-box>Selecione servico, barbeiro e data para consultar horarios.</div>
+      <button class="button primary" type="submit">Solicitar agendamento</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

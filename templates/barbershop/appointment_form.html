@@ -1,0 +1,42 @@
+{% extends "barbershop/base.html" %}
+{% block title %}Editar agendamento | Tio Bigode{% endblock %}
+{% block body %}
+<main class="admin-layout single">
+  <section class="admin-content">
+    <header class="admin-top">
+      <div>
+        <span class="kicker">Agenda</span>
+        <h1>Editar agendamento</h1>
+      </div>
+      <a class="button ghost" href="{% url 'appointment-detail' appointment.pk %}">Voltar</a>
+    </header>
+    <form class="panel form-panel" method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="grid two">
+        <label>Cliente {{ form.client_name }}</label>
+        <label>Telefone {{ form.phone }}</label>
+      </div>
+      <div class="grid two">
+        <label>Email {{ form.email }}</label>
+        <label>Barbeiro {{ form.barber }}</label>
+      </div>
+      <div class="grid two">
+        <label>Servico {{ form.service }}</label>
+        <label>Duracao {{ form.duration_minutes }}</label>
+      </div>
+      <div class="grid two">
+        <label>Data {{ form.date }}</label>
+        <label>Horario {{ form.start_time }}</label>
+      </div>
+      <div class="grid two">
+        <label>Status {{ form.status }}</label>
+        <label>Pagamento {{ form.payment_status }}</label>
+      </div>
+      <label>Forma de pagamento {{ form.payment_method }}</label>
+      <label>Observacoes {{ form.notes }}</label>
+      <button class="button primary" type="submit">Salvar alteracoes</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

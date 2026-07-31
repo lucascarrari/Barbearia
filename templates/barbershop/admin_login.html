@@ -1,0 +1,18 @@
+{% extends "barbershop/base.html" %}
+{% block title %}Tio Bigode | Login{% endblock %}
+{% block body %}
+<main class="login-page">
+  <form class="login-panel" method="post">
+    {% csrf_token %}
+    <span class="kicker">Painel administrativo</span>
+    <h1>Entrar</h1>
+    {% if form.errors %}
+      <div class="form-error">Usuario ou senha invalidos.</div>
+    {% endif %}
+    <label>Usuario {{ form.username }}</label>
+    <label>Senha {{ form.password }}</label>
+    <button class="button primary" type="submit">Acessar painel</button>
+    <a href="{% url 'home' %}">Voltar ao site</a>
+  </form>
+</main>
+{% endblock %}

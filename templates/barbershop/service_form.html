@@ -1,0 +1,54 @@
+{% extends "barbershop/base.html" %}
+{% load barbershop_extras %}
+{% block title %}Servico | Tio Bigode{% endblock %}
+{% block body %}
+<main class="admin-layout single">
+  <section class="admin-content">
+    <header class="admin-top">
+      <div>
+        <span class="kicker">Catalogo</span>
+        <h1>{% if service %}Editar servico{% else %}Novo servico{% endif %}</h1>
+      </div>
+      <a class="button ghost" href="{% url 'admin-dashboard' %}#servicos-admin">Voltar</a>
+    </header>
+    <form class="panel form-panel" method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+      <label>Nome {{ form.name }}</label>
+      <label>Descricao {{ form.description }}</label>
+      <div class="grid two">
+        <label>Preco {{ form.price }}</label>
+        <label>Duracao em minutos {{ form.duration_minutes }}</label>
+      </div>
+      <label class="check-row">{{ form.is_active }} Ativo</label>
+      <button class="button primary" type="submit">Salvar servico</button>
+    </form>
+
+    {% if history %}
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <span class="kicker">Historico</span>
+            <h2>Alteracoes de preco</h2>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>De</th><th>Para</th><th>Usuario</th></tr></thead>
+            <tbody>
+              {% for item in history %}
+                <tr>
+                  <td>{{ item.created_at|date:"d/m/Y H:i" }}</td>
+                  <td>{{ item.old_price|brl }}</td>
+                  <td>{{ item.new_price|brl }}</td>
+                  <td>{{ item.changed_by|default:"Sistema" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}
